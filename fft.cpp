@@ -1,3 +1,5 @@
+#ifndef FFT
+#define FFT
 #include <math.h>
 #include "funciones.h"
 #include "dft.cpp"
@@ -15,7 +17,6 @@
 
 
 typedef std::vector<PolarComplex> pcsignal;*/
-typedef std::vector<complex> csignal;//una ***, porque ssignal que es una señal real usa la "s" que se usa para la frecuencia cuando se habla de transformadas, pero bueno
 
 /*
 pcsignal to_complex(ssignal& s){
@@ -90,6 +91,7 @@ csignal dft2(csignal& s ){
 
 
 //Prepara F para graficarla. LLeva a los modulos y pone el DC offset en el sample del medio para tener un espectro even
+//Queda [-ultimo bin, - anteultimo bin .... -bin2, -bin1, 0, bin1, bin2, ..., ultimo bin,  Nyquist]
 //Tengo N samples espaciados 1/SR. el lugar 0 es para la frecuencia SR/2, el N/2 para 0. Ponele 40k de sr y 10 samples. Entonces en 5 samples tengo que ir de 0 a 20k. Cada sample subo 4khz.
 void to_graph(csignal& F, const char* path){
 	int N = F.size();
@@ -258,6 +260,7 @@ csignal reordered_copy(vector<T>& s, uint8_t shift, int N){
 }
 
 //Algo mas eficiente tendria un array para los reales por un lado y otro para los imaginarios por otro.
+//Para señales reales, el tiempo de ejecucion se puede reducir a la mitad ahorrando calcular los coeficientes de la segunda mitad
 csignal fft3(csignal& s, uint8_t log2N){
 
 	double m =2;
@@ -290,6 +293,9 @@ csignal fft3(csignal& s, uint8_t log2N){
 	}
 	return s;
 }
+
+
+//Devuelve [DC offset, bin1, bin2.... Nyquist, -bin1, -bin2....]
 uint8_t global_shift;
 csignal fft3(ssignal& s){
 
@@ -302,8 +308,8 @@ csignal fft3(ssignal& s){
 	if(MSB<=32) shift = 32-MSB;
 	else {cout << "INPUT IS TOO BIG - ABORTING FFT" << endl; throw(1);}
 	global_shift = shift;
-	printf("FFT TAMANIO %i, EXPONENTE %u\n",N, MSB);
-	printf("SENIAL TAMANIO %i \n", s.size());
+	//printf("FFT TAMANIO %i, EXPONENTE %u\n",N, MSB);
+	//printf("SENIAL TAMANIO %i \n", s.size());
 
 	//BIT SHIFT
 	//Estoy usando exp bits. Ponele que tengo que N = 8. Entonces el indice 3 (00000011) va al (11000000) 192. Como me manejo con 
@@ -311,7 +317,7 @@ csignal fft3(ssignal& s){
 	csignal c=reordered_copy(s, shift, N);
 	
 	//PRODUCTOS INTERNOS
-	cout << "GO FFT"<<endl;
+	//cout << "GO FFT"<<endl;
 	return fft3(c, MSB);
 }
 
@@ -334,3 +340,50 @@ ssignal ifft3(csignal& s){
 	return out;
 }
 
+
+
+
+
+
+
+/**************************  	Algunas funciones *************/
+
+//phase shift +-90°
+ssignal HTransform(ssignal &s){
+
+	csignal S = fft3(s);
+
+	//Positivas: +90°. Multiplico por i
+
+	for (int i = 0; i < S.size()/2; ++i)
+	{
+		swap(S[i].re, S[i].im);
+		S[i].re*=-1;
+	}
+
+	//Negativas: -90°. Multiplico por -i
+	for (int i = S.size()/2+1; i < S.size(); ++i)
+	{
+		swap(S[i].re, S[i].im);
+		S[i].im*=-1;
+	}
+	
+	return ifft3(S);
+}
+
+//Zeroes negative frequencies
+ssignal to_analytical(ssignal& s){
+
+	csignal S = fft3(s);
+	for (int i = 0; i < S.size()/2; ++i)
+	{
+		S[i].re=.0;
+		S[i].im=.0;
+	}
+
+	return ifft3(S);
+
+}
+
+
+#endif

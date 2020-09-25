@@ -5,7 +5,7 @@
 // Asume señales discretas periodicas
 // De un set de N puntos, obtengo la energia de N/2 +1 frecuencias. Los otros N/2-1 datos son las fases. La frec 0 es el DC offset y no lleva fase. Tampoco la frec N/2+1. N a N datos
 #include "funciones.h"
-bool print = true;
+bool print = false;
 //TODO: PAtear la horrible window function a la clase spectrum
 
 

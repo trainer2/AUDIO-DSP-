@@ -1,5 +1,215 @@
 #include "funciones.h"
+#include "fft.cpp"
+#include "phasevocoder.cpp"
 #include "dft.cpp"
+
+
+/****************************************************** TIME STRETCHING  ************************************/
+//RESULTADO: El que mas me gusta es FFT, porque tengo que resolver ese tema de PV con las envolventes o lo que lo haga tan raro.
+//UN SIGUIENTE PASO SERIA NO COPIAR FRAME A FRAME SINO INTERPOLAR. Esto aflojaria los artifacts en las transientes (escuchas dos ataques seguidos? dale)
+
+ssignal stretchPV(PARAMS){
+	vector<csignal> S = frequencyEstimate2(s,fftsize, hop, window);
+	vector<csignal> Stretched;;
+	for (int i = 0; i < S.size()-1; ++i)
+	{
+		Stretched.push_back(S[i]);
+		Stretched.push_back(S[i]);
+	}
+	csignal temp; temp.push_back(complex((double) s.size()*2)); //le paso el tamaño para la resintesis por aca
+	Stretched.push_back(temp);
+	return pvs(Stretched, fftsize,hop);
+}
+
+
+ssignal stretchFFT(PARAMS){
+
+	stftSpectrum S = stft(s,fftsize, hop, window);
+	vector<csignal> Stretched;
+	for (int i = 0; i < S.cs.size(); ++i)
+	{
+		Stretched.push_back(S.cs[i]);
+		Stretched.push_back(S.cs[i]);
+	}
+	S.cs=Stretched;
+	S.size*=2;
+	return istft(S);
+}
+
+ssignal shrinkFFT(PARAMS){
+	stftSpectrum S = stft(s,fftsize, hop, window);
+	vector<csignal> Shrinked;
+	for (int i = 0; i < S.cs.size(); i+=2)
+		Shrinked.push_back(S.cs[i]);
+	//Shrinked.push_back(S.cs[S.cs.size()-1]);
+	S.cs=Shrinked;
+	S.size/=2;
+	return istft(S);
+}
+
+
+ssignal shrinkPV(PARAMS){
+	vector<csignal> S = frequencyEstimate2(s,fftsize, hop, window);
+	vector<csignal> Shrinked;;
+	for (int i = 0; i < (S.size()-1); i+=2)
+		Shrinked.push_back(S[i]);
+	csignal temp; temp.push_back(complex((double) s.size()/2)); //le paso el tamaño para la resintesis por aca
+	Shrinked.push_back(temp);
+	return pvs(Shrinked, fftsize,hop);
+}
+
+
+ssignal freezeFFT(PARAMS){return s;}
+
+ssignal freezePV(PARAMS){return s;}
+
+/******************************************************************************************************************************************/
+/*****************************************************************PITCH SHIFTING ****************************************************/
+//RESULTADOS: SUPER INTERESANTE!! Son sonidos medio rotos pero atractivos igualmente (esos artifacts).
+
+
+ssignal pitchUpFFT(PARAMS){
+	stftSpectrum S = stft(s,fftsize, hop, window);
+	for (int frame = 0; frame < S.cs.size(); ++frame)
+	{
+		for (int bin = S.fftsize/2-1; bin >0; bin--)
+		{
+			//PRIMERA MITAD DE COORDENADAS
+			S.cs[frame][bin] =  S.cs[frame][bin/2];
+			S.cs[frame][bin/2]=complex(0.,0.);
+
+			//SEGUDA MITAD DE COORDENADAS
+			S.cs[frame][bin+fftsize/2] = conjugado(S.cs[frame][bin]);
+		}
+	}
+	return istft(S);
+}
+
+
+
+ssignal pitchDownFFT(PARAMS){
+	stftSpectrum S = stft(s,fftsize, hop, window);
+	for (int frame = 0; frame < S.cs.size(); ++frame)
+	{
+		for (int bin =0 ; bin < fftsize/4; bin++)
+		{
+			//PRIMERA MITAD DE COORDENADAS
+			S.cs[frame][bin] =  S.cs[frame][bin*2];
+			S.cs[frame][bin*2]=complex(0.,0.);
+
+			//SEGUDA MITAD DE COORDENADAS
+			S.cs[frame][bin+fftsize/2] = conjugado(S.cs[frame][bin]);
+		}
+	}
+	return istft(S);
+}
+
+//ESE bug esta bueno (mal recorrido el espectro, ver indices del segunod for)
+ssignal pitchDownFFTALT(PARAMS){
+	stftSpectrum S = stft(s,fftsize, hop, window);
+	for (int frame = 0; frame < S.cs.size(); ++frame)
+	{
+		for (int bin =0 ; bin < fftsize/2-1; bin++)
+		{
+			//PRIMERA MITAD DE COORDENADAS
+			S.cs[frame][bin] =  S.cs[frame][bin*2];
+			S.cs[frame][bin*2]=complex(0.,0.);
+
+			//SEGUDA MITAD DE COORDENADAS
+			S.cs[frame][bin+fftsize/2] = conjugado(S.cs[frame][bin]);
+		}
+	}
+	return istft(S);
+}
+
+
+ssignal pitchUpPV(PARAMS){
+	vector<csignal> S = frequencyEstimate2(s,fftsize, hop, window);
+
+	printf("FFT SIZE ES %i Frame SIZE ES %i \n", fftsize, S[0].size());
+	for (int frame = 0; frame < S.size()-1; ++frame)
+	{
+		for (int bin = fftsize/2-1; bin >0; bin--)
+		{
+			S[frame][bin] =  S[frame][bin/2];
+			S[frame][bin/2]=complex(0.,0.);
+			S[frame][bin+fftsize/2] = conjugado(S[frame][bin]);
+		}		
+	}
+	return pvs(S, fftsize,hop);
+}
+
+
+
+ssignal pitchDownPV(PARAMS){
+
+	vector<csignal> S = frequencyEstimate2(s,fftsize, hop, window);
+
+	for (int frame = 0; frame < S.size()-1; ++frame)
+	{
+		for (int bin = 0; bin < fftsize/4; ++bin)
+		{
+			S[frame][bin] =  S[frame][bin*2];
+			S[frame][bin*2]=complex(0.,0.);
+			S[frame][bin+fftsize/2] = conjugado(S[frame][bin]);
+		}		
+	}
+	return pvs(S, fftsize,hop);
+}
+
+
+
+
+
+
+/******************************************************************************************************************************************/
+
+
+
+
+/*****************				SCRAMBlE			**************************/
+
+/*
+//Recibe un fft y te intercambia las bandas de 1khz segun el orden que le llega en ese array (40 elementos. Se asume que es simetrico para que la señal de real, pero puede no serlo)
+csignal scramble(csignal& ff, int* perm, int fftsize=global_fftsize){
+
+	csignal ff2=ff;
+	float binfreq;
+	vector<int> indices;
+	float current = -21000.;
+
+	for (int bin = 0;bin  < ff.size(); ++bin)
+	{
+		binfreq = (float) bin*SAMPLING_RATE/(float)fftsize;
+		if(bin>=current) 
+			{indices.push_back(bin); //indices[i] va a guardar cual es el bin que tiene la ultima frecuencia de la banda 1000*i
+			current+=1000.;
+			printf("BIN %i FREQ %i\n",bin, current );
+		}
+	}
+
+	//Por ejemplo:Si me llega [3,2,1,0] en perm (y simplifico diciendo que tengo 3 bandas), entonces la banda de [-20khz : -10khz] va a los ultimos indices
+	for (int i = 0; i < i.size()-1; ++i)
+	{
+		for (int freqindex = indices[i]; freqindex <indices[i+1] ; ++i)
+		{
+			ff2[freqindex]
+			
+		}
+	}
+
+	return ff2;
+
+}*/
+
+
+
+
+
+
+/******************************************************************************************************************************************/
+
+
 
 //Basic. Takes a signal in, a starting index, a sample lenght and an out duration, and makes a new audio with that fragment looped a loot all it can fit
 //envelope applies an envelope to the sampled fragment. You could also define two envelopes,
@@ -80,11 +290,26 @@ ssignal allFrequencies(double spacing, float len, double from = 20.0, double to 
 ssignal dc(int samps){return ssignal(samps, 1);}
 ssignal peak(int samps){ssignal out(samps,0); out[0]=1; return out; }
 
+//Estas tres salen de una con IR's pero queria ver que onda asi
 ssignal derivar(ssignal& s){
 	ssignal der = ssignal (s.size());
 	for (int i = 0; i < s.size()-1; ++i)
 	 der[i] = (s[i+1] - s[i])/ (double) SAMPLING_RATE;
 	return der;
+}
+
+ssignal integrar(ssignal& s){
+	ssignal out(s.size());
+	out[0]=s[0];
+	for (int i = 0; i < s.size(); ++i) out[i] = s[i] + out[i-1];
+	return out;
+}
+
+ssignal integrarTrucho(ssignal& s){
+	ssignal out(s.size());
+	out[0]=s[0];
+	for (int i = 0; i < s.size(); ++i) out[i] = s[i] + s[i-1];
+	return out;
 }
 
 //Prueba de Phase Modulation con una onda cuadrada
@@ -105,6 +330,57 @@ ssignal PM(int nharmonics,double rate = 1, double step= 2, double freq = 440,  d
 }
 
 
+//BUENISIMO
+void unscramble(string pathWav, int d1000 = 0, string tail=""){
+
+	ssignal s = readWav(pathWav);
+	csignal F = fft3(s);
+	csignal F2 =F;
+
+	float ds = SAMPLING_RATE/F.size();//diferencia de freq entre dos bins consecutivos
+	if(d1000 ==0){
+	 d1000 = (int) (5000./ds); 
+	}
+	else d1000 = F.size()/8;
+
+	int bandaAfrom = 0; //0-5khz
+	int bandaAto = d1000 +bandaAfrom;
+
+	int bandaBfrom = bandaAto+1; //5khz-10khz
+	int bandaBto = d1000+bandaBfrom;
+
+	int bandaCfrom = bandaBto+1; //10khz-15khz
+	int bandaCto = d1000+bandaCfrom;
+
+	int bandaDfrom = bandaCto+1; //15khz-20khz
+
+	//REORDENAR F
+	//ENTRA CBDA para las primeras 4 bandas de 1khz
+	//A
+	for (int i = 0; i < d1000; ++i)
+	{
+		//Freq positivas
+		F2[i+bandaAfrom] = F[i+bandaDfrom];
+		F2[i+bandaBfrom] = F[i+bandaBfrom];
+		F2[i+bandaCfrom] = F[i+bandaAfrom];
+		F2[i+bandaDfrom] = F[i+bandaCfrom];
+
+		//Freq negativas
+		F2[i+bandaAfrom+F.size()/2] = F[i+bandaDfrom+F.size()/2];
+		F2[i+bandaCfrom+F.size()/2] = F[i+bandaAfrom+F.size()/2];
+		F2[i+bandaBfrom+F.size()/2] = F[i+bandaBfrom+F.size()/2];
+		F2[i+bandaDfrom+F.size()/2] = F[i+bandaCfrom+F.size()/2];
+	}
+
+	s=ifft3(F2);
+	//printf("ds = %.2f\n",ds );
+	//printf("1000hz son  %i indices\n",d1000 );
+	guardarWavRapido(s, pathWav + "USNCRAMBLED" + tail);
+
+}
+
+
+/*
 //Ej 4.5 del curso de la transformada de Fourier (amo)
 ssignal descramble(string pathWav){
 
@@ -153,7 +429,7 @@ ssignal descramble(string pathWav){
 	}
 	ssignal s2 = syntethise(S2);
 	return s2;
-}
+}*/
 /*********************************************************
 						A usar los fx 
 

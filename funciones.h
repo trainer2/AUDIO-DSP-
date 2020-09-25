@@ -15,16 +15,22 @@
 #include <math.h>
 
 using namespace std;
+#define PARAMS ssignal& s, int fftsize = global_fftsize, int hop = global_hop,double (*window)(int i, int size) = Hann
+
 
 const double PI    = 3.141592654;
 const double TWOPI = 6.283185307179586476925286766559;
 const double HALFPI = 1.5707963267948966192313216916398;
       double SAMPLING_RATE = 44100;
-
+int global_fftsize = 2048*8;
+int global_hop = 2048*8*4/5;
+bool global_save = true;
+struct complex;
 typedef unsigned int uint;
 typedef AudioFile<double>::AudioBuffer Buffer;
-double sineCtCalc(double freq, double srate = SAMPLING_RATE){ return 2*PI* (double) freq / (double) srate;}
+typedef std::vector<complex> csignal;//una ***, porque ssignal que es una señal real usa la "s" que se usa para la frecuencia cuando se habla de transformadas, pero bueno
 typedef std::vector<double> ssignal;//signal already taken in std library
+double sineCtCalc(double freq, double srate = SAMPLING_RATE){ return 2*PI* (double) freq / (double) srate;}
 //#define ssignal std::vector<double>
 //typedef std::vector<double> audio; //Cada 3 meses que retomo esto me dan ganas de ponerle otro nombre a las cosas! sera posible
 int randSp(int max){return rand()%max;}
@@ -55,7 +61,7 @@ void deflate(vector<breakpoint>& b, double min_sep){
 void writeToFile(vector<breakpoint> bps, const char* path){
 	FILE *fp;
     fp = fopen(path,"w");
-	for(int i=0; i< bps.size(); i++) fprintf(fp,"%.41f\t%.81f\n", bps[i].x, bps[i].y);
+	for(int i=0; i< bps.size(); i++) fprintf(fp,"%.3f\t%.81f\n", bps[i].x, bps[i].y);
     fclose(fp);
 }
 
@@ -73,6 +79,7 @@ struct complex{
 	complex operator-(complex b){return complex (re-b.re, im-b.im);}
     complex& operator+=(complex b){re+=b.re; im+=b.im;}
     complex& operator-=(complex b){re-=b.re; im-=b.im;}
+
 	complex operator/(complex &b){
 		double modulo = pow(b.re,2) + pow(b.im,2);
 		return complex((re*b.re+im*b.im) / modulo, (im*b.re-re*b.im / modulo));
@@ -86,6 +93,7 @@ double abs(complex c){
 	return sqrt(c.re*c.re+c.im*c.im);
 }
 void conj(complex& c){ c.im *= -1;}
+complex conjugado(complex& b){return complex(b.re, -1*b.im);}
 
 /**********************************************************************************/
 /********************            SPECTRUM   ***********************************/
@@ -126,6 +134,17 @@ public:
 	}
 };
 
+struct stftSpectrum
+{
+	vector<csignal> cs;
+	//Estos parametros aseguran una resintesis igual. Cumplen la propiedad COLA. 
+	//El problema de estas window es que casi ningun sample aparece con su amplitud original!! Ej: El sample 0 todo bien. El sample 512 todo bien. Todos los del medio, van a tener su amplitud reducida!
+	int fftsize = 1024; 
+	int hop = 512;
+	double(*window)(int, int);
+	int size;
+	
+};
 
 //Deduzcamos la frecuencia de cada indice. 
 // Una DFT de 512 puntos de sampling produce 257 puntos de coseno y seno.
@@ -205,6 +224,18 @@ double sinc(double x) {
 	return sin(x)/x;
 }
 
+csignal randomcs(int len){
+	csignal C(len); for (int i = 0; i < len; ++i) {C[i].re =  (double) rand()/RAND_MAX*2.-1.;;
+												   C[i].im =  (double) rand()/RAND_MAX*2.-1.;;}
+	return C;
+}
+ssignal randomss(int len){
+	ssignal C(len); for (int i = 0; i < len; ++i) C[i] =  (double) rand()/RAND_MAX*2.-1.;;
+	return C;
+}
+
+
+
 
 /**********************************************************************************/
 /**************************** IN / OUT WAVS    ************************************/
@@ -241,7 +272,9 @@ void guardarWavMono(const vector<double>& buffer, int bitdepth, double srate, st
 	bf.push_back(buffer);
 	guardarWav(bf, 1, bitdepth, srate, filename);
 }
-void guardarWavRapido(vector<double>& buffer, string filename) {normalize(buffer); 
+void guardarWavRapido(vector<double>& buffer, string filename, bool testeando=false) {
+	if(testeando) buffer.push_back(1.); //para acelerar mis experimentos particulares. En particular, me evita normalizar
+	if(not testeando) normalize(buffer); 
 	guardarWavMono(buffer, 16,44100,filename);}
 
 
@@ -308,6 +341,8 @@ void printProgress(int i, int total){
 *************************************************************/
 
 
+//TODO: EL ANCHO DEBE DEPENDER DE HOP (TERCER PARAMETRO) PARA CUMPLIR COLA
+
 
 //default window function
 double id(int x, int dummy) {return 1.0;} //RECT
@@ -323,6 +358,15 @@ double tri(int x, int size){
 	if(x>half) return 2-2*x/size;
 	else return 2*x/size;
 }	
+
+//TIENE TREMENDO PICO
+//De 0 a 0.2 sube al cuadrado, y de a 0.8 a 1 baja como cuadrado
+double almostFlat(int x, int size){
+	if(x <0.2*size) return 25* x/size*x/size;
+	if(x> 0.8*size) return 1- 25*pow((x/size-0.8),2.);
+	if(x<0 or x>size) return 0;
+	else return 1;
+}
 
 
 
